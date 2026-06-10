@@ -13,7 +13,7 @@ Uses Android 17 Contact Picker when available, Android legacy Contacts picker be
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'system_contact_picker contributors' => 'contributors@example.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
+  s.source_files = 'system_contact_picker/Sources/system_contact_picker/**/*.swift'
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
 

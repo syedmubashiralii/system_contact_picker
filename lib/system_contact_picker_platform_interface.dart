@@ -1,8 +1,12 @@
+/// Platform interface for system contact picker implementations.
+library;
+
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'system_contact_picker_method_channel.dart';
 import 'src/models.dart';
 
+/// Contract implemented by platform-specific contact picker integrations.
 abstract class SystemContactPickerPlatform extends PlatformInterface {
   /// Constructs a SystemContactPickerPlatform.
   SystemContactPickerPlatform() : super(token: _token);
@@ -25,6 +29,7 @@ abstract class SystemContactPickerPlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  /// Opens the platform contact picker with the requested options.
   Future<List<PickedContact>> pickContacts({
     required Set<ContactField> fields,
     required bool allowMultiple,
@@ -34,6 +39,7 @@ abstract class SystemContactPickerPlatform extends PlatformInterface {
     throw UnimplementedError('pickContacts() has not been implemented.');
   }
 
+  /// Returns capabilities exposed by the platform implementation.
   Future<ContactPickerCapabilities> getCapabilities() {
     throw UnimplementedError('getCapabilities() has not been implemented.');
   }

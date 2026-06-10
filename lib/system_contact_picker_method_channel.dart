@@ -1,3 +1,6 @@
+/// Method-channel implementation for the system contact picker plugin.
+library;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -19,11 +22,11 @@ class MethodChannelSystemContactPicker extends SystemContactPickerPlatform {
   }) async {
     final contacts = await methodChannel
         .invokeListMethod<dynamic>('pickContacts', <String, Object?>{
-          'fields': fields.map((field) => field.name).toList(growable: false),
-          'allowMultiple': allowMultiple,
-          'limit': limit,
-          'matchAllFields': matchAllFields,
-        });
+      'fields': fields.map((field) => field.name).toList(growable: false),
+      'allowMultiple': allowMultiple,
+      'limit': limit,
+      'matchAllFields': matchAllFields,
+    });
     return (contacts ?? const <dynamic>[])
         .whereType<Map<dynamic, dynamic>>()
         .map(PickedContact.fromMap)

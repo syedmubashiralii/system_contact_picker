@@ -1,9 +1,19 @@
+/// Public API for opening the native system contact picker.
+library;
+
 import '../system_contact_picker_platform_interface.dart';
 import 'models.dart';
 
+/// Opens the native system UI for selecting contacts.
 class SystemContactPicker {
+  /// Creates a contact picker.
   const SystemContactPicker();
 
+  /// Opens the native picker and returns the selected contacts.
+  ///
+  /// [fields] must not be empty. [limit], when provided, must be from 1 to
+  /// 100. Platforms that only support one selection return at most one contact
+  /// even when [allowMultiple] is `true`.
   Future<List<PickedContact>> pickContacts({
     Set<ContactField> fields = defaultContactPickerFields,
     bool allowMultiple = false,
@@ -19,6 +29,7 @@ class SystemContactPicker {
     );
   }
 
+  /// Opens the native picker and returns one contact, or `null` if cancelled.
   Future<PickedContact?> pickContact({
     Set<ContactField> fields = defaultContactPickerFields,
     bool matchAllFields = false,
@@ -32,6 +43,7 @@ class SystemContactPicker {
     return contacts.isEmpty ? null : contacts.first;
   }
 
+  /// Returns contact picker capabilities for the current platform.
   Future<ContactPickerCapabilities> getCapabilities() {
     return SystemContactPickerPlatform.instance.getCapabilities();
   }
