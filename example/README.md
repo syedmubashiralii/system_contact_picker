@@ -1,16 +1,29 @@
-# system_contact_picker_example
+# system_contact_picker example
 
-Demonstrates how to use the system_contact_picker plugin.
+Demonstrates permissionless contact selection on every supported platform.
 
-## Getting Started
+## Android behavior
 
-This project is a starting point for a Flutter application.
+| Android version | API | Example behavior |
+| --- | --- | --- |
+| Android 9–16 | 28–36 | Legacy system `ACTION_PICK`; one contact and one field per request |
+| Android 17+ | 37+ | Privacy-preserving Contact Picker; multiple contacts and multiple fields |
 
-A few resources to get you started if this is your first Flutter project:
+The example declares no contacts permission. Its minimum Android version is
+Android 9 (API 28). Phone, email, postal-address, and display-name buttons work
+across the entire Android 9-to-latest range. Multi-contact and rich-field
+buttons are shown only when the current OS reports support. Android 9–16 never
+shows a misleading multi-contact button because its system picker can return
+only one selection.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## iOS behavior
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+iOS 13+ uses `CNContactPickerViewController`, supports single and multiple
+selection, and does not require Contacts authorization or an
+`NSContactsUsageDescription` entry.
+
+Run the example with:
+
+```sh
+flutter run
+```

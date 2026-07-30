@@ -3,9 +3,10 @@ import ContactsUI
 import Flutter
 import UIKit
 
-public class SystemContactPickerPlugin: NSObject, FlutterPlugin, CNContactPickerDelegate {
+public class SystemContactPickerPlugin: NSObject, FlutterPlugin {
   private var pendingResult: FlutterResult?
   private var pendingOptions: PickerOptions?
+  private var pickerDelegate: CNContactPickerDelegate?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
@@ -26,28 +27,11 @@ public class SystemContactPickerPlugin: NSObject, FlutterPlugin, CNContactPicker
         "usesAndroid17ContactPicker": false,
         "supportsMultiple": true,
         "requiresReadContactsPermission": false,
+        "supportedFields": PickerOptions.supportedFields,
       ])
     default:
       result(FlutterMethodNotImplemented)
     }
-  }
-
-  public func contactPickerDidCancel(_ picker: CNContactPickerViewController) {
-    complete([])
-  }
-
-  public func contactPicker(
-    _ picker: CNContactPickerViewController,
-    didSelect contact: CNContact
-  ) {
-    complete([contact])
-  }
-
-  public func contactPicker(
-    _ picker: CNContactPickerViewController,
-    didSelect contacts: [CNContact]
-  ) {
-    complete(contacts)
   }
 
   private func pickContacts(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -77,7 +61,20 @@ public class SystemContactPickerPlugin: NSObject, FlutterPlugin, CNContactPicker
     }
 
     let picker = CNContactPickerViewController()
-    picker.delegate = self
+    let delegate: CNContactPickerDelegate
+    if options.allowMultiple {
+      delegate = MultipleContactPickerDelegate(
+        onCancel: { [weak self] in self?.complete([]) },
+        onSelect: { [weak self] contacts in self?.complete(contacts) }
+      )
+    } else {
+      delegate = SingleContactPickerDelegate(
+        onCancel: { [weak self] in self?.complete([]) },
+        onSelect: { [weak self] contact in self?.complete([contact]) }
+      )
+    }
+    pickerDelegate = delegate
+    picker.delegate = delegate
     picker.displayedPropertyKeys = displayedPropertyKeys(for: options.fields)
     picker.predicateForEnablingContact = contactPredicate(for: options.fields, matchAll: options.matchAllFields)
 
@@ -93,6 +90,7 @@ public class SystemContactPickerPlugin: NSObject, FlutterPlugin, CNContactPicker
     let selected = maxCount == nil ? contacts : Array(contacts.prefix(maxCount!))
     pendingResult = nil
     pendingOptions = nil
+    pickerDelegate = nil
     result(selected.map(contactMap))
   }
 
@@ -125,6 +123,7 @@ public class SystemContactPickerPlugin: NSObject, FlutterPlugin, CNContactPicker
     keys.insert(CNContactFamilyNameKey)
     keys.insert(CNContactNamePrefixKey)
     keys.insert(CNContactNameSuffixKey)
+    keys.insert(CNContactOrganizationNameKey)
 
     for field in fields {
       switch field {
@@ -341,6 +340,11 @@ public class SystemContactPickerPlugin: NSObject, FlutterPlugin, CNContactPicker
 }
 
 private struct PickerOptions {
+  static let supportedFields = [
+    "name", "phone", "email", "postalAddress", "organization",
+    "relation", "event", "photo", "website", "nickname",
+  ]
+
   let fields: [String]
   let allowMultiple: Bool
   let limit: Int?
@@ -348,12 +352,57 @@ private struct PickerOptions {
 
   init?(call: FlutterMethodCall) {
     guard let arguments = call.arguments as? [String: Any] else { return nil }
-    let rawFields = arguments["fields"] as? [String] ?? ["phone", "email"]
+    let rawFields = arguments["fields"] as? [String] ?? ["phone"]
     let uniqueFields = Array(NSOrderedSet(array: rawFields)) as? [String] ?? rawFields
-    guard !uniqueFields.isEmpty else { return nil }
+    guard !uniqueFields.isEmpty,
+      uniqueFields.allSatisfy({ Self.supportedFields.contains($0) })
+    else { return nil }
     fields = uniqueFields
     allowMultiple = arguments["allowMultiple"] as? Bool ?? false
     limit = arguments["limit"] as? Int
+    if let limit = limit, !(1...100).contains(limit) { return nil }
     matchAllFields = arguments["matchAllFields"] as? Bool ?? false
+  }
+}
+
+private final class SingleContactPickerDelegate: NSObject, CNContactPickerDelegate {
+  private let onCancel: () -> Void
+  private let onSelect: (CNContact) -> Void
+
+  init(onCancel: @escaping () -> Void, onSelect: @escaping (CNContact) -> Void) {
+    self.onCancel = onCancel
+    self.onSelect = onSelect
+  }
+
+  func contactPickerDidCancel(_ picker: CNContactPickerViewController) {
+    onCancel()
+  }
+
+  func contactPicker(
+    _ picker: CNContactPickerViewController,
+    didSelect contact: CNContact
+  ) {
+    onSelect(contact)
+  }
+}
+
+private final class MultipleContactPickerDelegate: NSObject, CNContactPickerDelegate {
+  private let onCancel: () -> Void
+  private let onSelect: ([CNContact]) -> Void
+
+  init(onCancel: @escaping () -> Void, onSelect: @escaping ([CNContact]) -> Void) {
+    self.onCancel = onCancel
+    self.onSelect = onSelect
+  }
+
+  func contactPickerDidCancel(_ picker: CNContactPickerViewController) {
+    onCancel()
+  }
+
+  func contactPicker(
+    _ picker: CNContactPickerViewController,
+    didSelect contacts: [CNContact]
+  ) {
+    onSelect(contacts)
   }
 }

@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'system_contact_picker'
-  s.version          = '0.0.1'
+  s.version          = '0.0.3'
   s.summary          = 'Native Flutter contact picker for Android and iOS.'
   s.description      = <<-DESC
 Uses Android 17 Contact Picker when available, Android legacy Contacts picker below API 37, and iOS ContactsUI.

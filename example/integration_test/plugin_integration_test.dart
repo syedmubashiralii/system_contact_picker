@@ -6,6 +6,7 @@
 // For more information about Flutter integration tests, please see
 // https://flutter.dev/to/integration-testing
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -21,5 +22,54 @@ void main() {
     final capabilities = await plugin.getCapabilities();
 
     expect(capabilities.platform.isNotEmpty, true);
+    expect(capabilities.requiresReadContactsPermission, false);
+    if (capabilities.platform == 'android') {
+      final sdk = capabilities.androidSdkInt!;
+      expect(sdk, greaterThanOrEqualTo(28));
+      if (sdk <= 36) {
+        expect(capabilities.usesAndroid17ContactPicker, false);
+        expect(capabilities.supportsMultiple, false);
+        expect(capabilities.maximumSelectionLimit, 1);
+        expect(capabilities.supportedFields, <ContactField>{
+          ContactField.name,
+          ContactField.phone,
+          ContactField.email,
+          ContactField.postalAddress,
+        });
+      } else {
+        expect(capabilities.usesAndroid17ContactPicker, true);
+        expect(capabilities.supportsMultiple, true);
+        expect(capabilities.maximumSelectionLimit, 100);
+        expect(capabilities.supportedFields, <ContactField>{
+          ...ContactField.values,
+        });
+      }
+    }
+  });
+
+  testWidgets('legacy Android rejects misleading multi-contact requests', (
+    WidgetTester tester,
+  ) async {
+    const plugin = SystemContactPicker();
+    final capabilities = await plugin.getCapabilities();
+    if (capabilities.platform != 'android' ||
+        (capabilities.androidSdkInt ?? 37) >= 37) {
+      return;
+    }
+
+    await expectLater(
+      plugin.pickContacts(
+        fields: const <ContactField>{ContactField.phone},
+        allowMultiple: true,
+        limit: 5,
+      ),
+      throwsA(
+        isA<PlatformException>().having(
+          (error) => error.code,
+          'code',
+          'multiple_not_supported',
+        ),
+      ),
+    );
   });
 }

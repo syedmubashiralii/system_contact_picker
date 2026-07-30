@@ -1,11 +1,9 @@
 package dev.system_contact_picker
 
-import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
@@ -38,8 +36,7 @@ class SystemContactPickerPlugin :
     FlutterPlugin,
     ActivityAware,
     MethodCallHandler,
-    PluginRegistry.ActivityResultListener,
-    PluginRegistry.RequestPermissionsResultListener {
+    PluginRegistry.ActivityResultListener {
 
     private lateinit var channel: MethodChannel
     private var appContext: Context? = null
@@ -64,7 +61,6 @@ class SystemContactPickerPlugin :
         activity = binding.activity
         activityBinding = binding
         binding.addActivityResultListener(this)
-        binding.addRequestPermissionsResultListener(this)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
@@ -112,7 +108,7 @@ class SystemContactPickerPlugin :
                 val contacts = if (usesAndroid17Picker()) {
                     queryAndroid17Session(resultUri)
                 } else {
-                    queryLegacyContact(resultUri, current.options)
+                    queryLegacySelection(resultUri, current.options.fields.single())
                 }
                 completeSuccess(current, contacts)
             } catch (error: Throwable) {
@@ -122,29 +118,6 @@ class SystemContactPickerPlugin :
                     error.message ?: "Unable to read the selected contact data.",
                 )
             }
-        }
-        return true
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ): Boolean {
-        if (requestCode != REQUEST_READ_CONTACTS) {
-            return false
-        }
-        val current = pendingCall ?: return true
-        val granted = grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            launchPicker(current)
-        } else {
-            completeError(
-                current,
-                "permission_denied",
-                "READ_CONTACTS permission is required for the legacy Android picker on API 36 and below.",
-            )
         }
         return true
     }
@@ -170,18 +143,25 @@ class SystemContactPickerPlugin :
             result.error("bad_arguments", error.message, null)
             return
         }
-
-        val current = PendingCall(result, options)
-        pendingCall = current
-
-        if (!usesAndroid17Picker() && !hasReadContactsPermission(hostActivity)) {
-            hostActivity.requestPermissions(
-                arrayOf(Manifest.permission.READ_CONTACTS),
-                REQUEST_READ_CONTACTS,
+        if (!usesAndroid17Picker() && options.allowMultiple) {
+            result.error(
+                "multiple_not_supported",
+                "Selecting multiple contacts requires Android 17 (API 37) or later.",
+                null,
+            )
+            return
+        }
+        if (!usesAndroid17Picker() && !hasSupportedLegacyFields(options)) {
+            result.error(
+                "unsupported_legacy_fields",
+                "Android API 36 and below supports exactly one of: name, phone, email, or postalAddress.",
+                null,
             )
             return
         }
 
+        val current = PendingCall(result, options)
+        pendingCall = current
         launchPicker(current)
     }
 
@@ -229,16 +209,13 @@ class SystemContactPickerPlugin :
     }
 
     private fun legacyIntent(options: PickerOptions): Intent {
-        val dataUri = when {
-            options.fields.size == 1 && options.fields.contains("phone") -> Phone.CONTENT_URI
-            options.fields.size == 1 && options.fields.contains("email") -> Email.CONTENT_URI
-            options.fields.size == 1 && options.fields.contains("postalAddress") ->
-                StructuredPostal.CONTENT_URI
+        val dataUri = when (options.fields.single()) {
+            "phone" -> Phone.CONTENT_URI
+            "email" -> Email.CONTENT_URI
+            "postalAddress" -> StructuredPostal.CONTENT_URI
             else -> ContactsContract.Contacts.CONTENT_URI
         }
-        return Intent(Intent.ACTION_PICK, dataUri).apply {
-            putExtra(EXTRA_USE_SYSTEM_CONTACTS_PICKER, true)
-        }
+        return Intent(Intent.ACTION_PICK, dataUri)
     }
 
     private fun queryAndroid17Session(sessionUri: Uri): List<Map<String, Any?>> {
@@ -250,54 +227,32 @@ class SystemContactPickerPlugin :
         return contacts.values.map { it.toMap() }
     }
 
-    private fun queryLegacyContact(
-        uri: Uri,
-        options: PickerOptions
-    ): List<Map<String, Any?>> {
+    private fun queryLegacySelection(uri: Uri, field: String): List<Map<String, Any?>> {
         val context = appContext ?: error("Missing application context.")
-        val contactId = resolveLegacyContactId(context, uri) ?: return emptyList()
-        val mimeTypes = requestedMimeTypes(options.fields)
-        val contacts = LinkedHashMap<String, ContactBuilder>()
-        val placeholders = mimeTypes.joinToString(",") { "?" }
-        val selection = buildString {
-            append("${Data.CONTACT_ID} = ?")
-            if (mimeTypes.isNotEmpty()) {
-                append(" AND ${Data.MIMETYPE} IN ($placeholders)")
-            }
+        if (field == "name") {
+            return queryLegacyContactName(context, uri)
         }
-        val selectionArgs = arrayOf(contactId, *mimeTypes.toTypedArray())
-        context.contentResolver.query(
-            Data.CONTENT_URI,
-            DATA_PROJECTION,
-            selection,
-            selectionArgs,
-            null,
-        )?.use { cursor ->
+        val contacts = LinkedHashMap<String, ContactBuilder>()
+        context.contentResolver.query(uri, DATA_PROJECTION, null, null, null)?.use { cursor ->
             readDataCursor(cursor, contacts)
         }
         return contacts.values.map { it.toMap() }
     }
 
-    private fun resolveLegacyContactId(context: Context, uri: Uri): String? {
-        val projections = listOf(
-            arrayOf(Data.CONTACT_ID),
-            arrayOf(ContactsContract.Contacts._ID),
-        )
-        for (projection in projections) {
-            try {
-                context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val id = cursor.getStringOrNull(projection[0])
-                        if (!id.isNullOrBlank()) {
-                            return id
-                        }
-                    }
-                }
-            } catch (_: Throwable) {
-                continue
+    private fun queryLegacyContactName(context: Context, uri: Uri): List<Map<String, Any?>> {
+        context.contentResolver.query(uri, LEGACY_CONTACT_PROJECTION, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getStringOrNull(ContactsContract.Contacts.LOOKUP_KEY)
+                    ?: cursor.getStringOrNull(ContactsContract.Contacts._ID)
+                    ?: return emptyList()
+                val contact = ContactBuilder(id)
+                contact.lookupKey = cursor.getStringOrNull(ContactsContract.Contacts.LOOKUP_KEY)
+                contact.displayName =
+                    cursor.getStringOrNull(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY) ?: ""
+                return listOf(contact.toMap())
             }
         }
-        return null
+        return emptyList()
     }
 
     private fun readDataCursor(
@@ -350,10 +305,8 @@ class SystemContactPickerPlugin :
         return mimeTypes.toList()
     }
 
-    private fun hasReadContactsPermission(hostActivity: Activity): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-            hostActivity.checkSelfPermission(Manifest.permission.READ_CONTACTS) ==
-            PackageManager.PERMISSION_GRANTED
+    private fun hasSupportedLegacyFields(options: PickerOptions): Boolean {
+        return options.fields.size == 1 && options.fields.single() in LEGACY_FIELDS
     }
 
     private fun usesAndroid17Picker(): Boolean {
@@ -367,8 +320,9 @@ class SystemContactPickerPlugin :
             "androidSdkInt" to Build.VERSION.SDK_INT,
             "usesAndroid17ContactPicker" to android17,
             "supportsMultiple" to android17,
-            "requiresReadContactsPermission" to !android17,
+            "requiresReadContactsPermission" to false,
             "maximumSelectionLimit" to if (android17) MAX_SELECTION_LIMIT else 1,
+            "supportedFields" to if (android17) ALL_FIELDS else LEGACY_FIELDS.toList(),
         )
     }
 
@@ -394,7 +348,6 @@ class SystemContactPickerPlugin :
 
     private fun detachActivity() {
         activityBinding?.removeActivityResultListener(this)
-        activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null
         activity = null
         pendingCall?.let {
@@ -647,7 +600,6 @@ class SystemContactPickerPlugin :
     companion object {
         private const val ANDROID_17_API = 37
         private const val REQUEST_PICK_CONTACT = 3717
-        private const val REQUEST_READ_CONTACTS = 3718
         private const val MAX_SELECTION_LIMIT = 100
         private const val ACTION_PICK_CONTACTS = "android.provider.action.PICK_CONTACTS"
         private const val EXTRA_USE_SYSTEM_CONTACTS_PICKER =
@@ -658,7 +610,25 @@ class SystemContactPickerPlugin :
             "android.provider.extra.PICK_CONTACTS_SELECTION_LIMIT"
         private const val EXTRA_PICK_CONTACTS_MATCH_ALL_DATA_FIELDS =
             "android.provider.extra.PICK_CONTACTS_MATCH_ALL_DATA_FIELDS"
-        private val DEFAULT_FIELDS = listOf("phone", "email")
+        private val DEFAULT_FIELDS = listOf("phone")
+        private val ALL_FIELDS = listOf(
+            "name",
+            "phone",
+            "email",
+            "postalAddress",
+            "organization",
+            "relation",
+            "event",
+            "photo",
+            "website",
+            "nickname",
+        )
+        private val LEGACY_FIELDS = linkedSetOf("name", "phone", "email", "postalAddress")
+        private val LEGACY_CONTACT_PROJECTION = arrayOf(
+            ContactsContract.Contacts._ID,
+            ContactsContract.Contacts.LOOKUP_KEY,
+            ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
+        )
         private val DATA_PROJECTION = arrayOf(
             Data.CONTACT_ID,
             Data.LOOKUP_KEY,

@@ -14,8 +14,6 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>system_contact_picker_example</string>
-	<key>NSContactsUsageDescription</key>
-	<string>Select contacts to demonstrate the native system contact picker.</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

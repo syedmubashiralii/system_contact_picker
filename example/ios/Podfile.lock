@@ -2,7 +2,7 @@ PODS:
   - Flutter (1.0.0)
   - integration_test (0.0.1):
     - Flutter
-  - system_contact_picker (0.0.1):
+  - system_contact_picker (0.0.3):
     - Flutter
 
 DEPENDENCIES:
@@ -21,8 +21,8 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
-  system_contact_picker: 77c79d92cfbb970f31568c4aab4bdd1c2c0ff020
+  system_contact_picker: 8ee4268b8e458d1fef6cc4bda1d5d07a1175a9ad
 
-PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+PODFILE CHECKSUM: f8c2dcdfb50bb67645580d28a6bf814fca30bdec
 
 COCOAPODS: 1.16.2

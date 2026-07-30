@@ -32,6 +32,7 @@ class MockSystemContactPickerPlatform
         usesAndroid17ContactPicker: true,
         supportsMultiple: true,
         requiresReadContactsPermission: false,
+        supportedFields: <ContactField>{...ContactField.values},
         maximumSelectionLimit: 100,
       ),
     );
@@ -43,6 +44,10 @@ void main() {
 
   test('$MethodChannelSystemContactPicker is the default instance', () {
     expect(initialPlatform, isInstanceOf<MethodChannelSystemContactPicker>());
+  });
+
+  test('the privacy-first default requests only a phone number', () {
+    expect(defaultContactPickerFields, <ContactField>{ContactField.phone});
   });
 
   test('pickContact returns the first selected contact', () async {

@@ -1,6 +1,6 @@
 name: system_contact_picker
-description: Native Flutter contact picker using Android 17 Contact Picker, Android legacy fallback, and iOS ContactsUI.
-version: 0.0.2
+description: Permissionless native Flutter contact picker using Android system pickers and iOS ContactsUI.
+version: 0.0.3
 repository: https://github.com/syedmubashiralii/system_contact_picker
 
 environment:

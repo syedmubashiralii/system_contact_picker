@@ -14,33 +14,39 @@ void main() {
     calls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-          calls.add(methodCall);
-          switch (methodCall.method) {
-            case 'pickContacts':
-              return <Map<String, Object?>>[
+      calls.add(methodCall);
+      switch (methodCall.method) {
+        case 'pickContacts':
+          return <Map<String, Object?>>[
+            <String, Object?>{
+              'id': 'lookup-1',
+              'displayName': 'Grace Hopper',
+              'phones': <Map<String, Object?>>[
                 <String, Object?>{
-                  'id': 'lookup-1',
-                  'displayName': 'Grace Hopper',
-                  'phones': <Map<String, Object?>>[
-                    <String, Object?>{
-                      'value': '+15555550101',
-                      'label': 'mobile',
-                    },
-                  ],
+                  'value': '+15555550101',
+                  'label': 'mobile',
                 },
-              ];
-            case 'getCapabilities':
-              return <String, Object?>{
-                'platform': 'android',
-                'androidSdkInt': 37,
-                'usesAndroid17ContactPicker': true,
-                'supportsMultiple': true,
-                'requiresReadContactsPermission': false,
-                'maximumSelectionLimit': 100,
-              };
-          }
-          return null;
-        });
+              ],
+            },
+          ];
+        case 'getCapabilities':
+          return <String, Object?>{
+            'platform': 'android',
+            'androidSdkInt': 37,
+            'usesAndroid17ContactPicker': true,
+            'supportsMultiple': true,
+            'requiresReadContactsPermission': false,
+            'supportedFields': <String>[
+              'name',
+              'phone',
+              'email',
+              'postalAddress',
+            ],
+            'maximumSelectionLimit': 100,
+          };
+      }
+      return null;
+    });
   });
 
   tearDown(() {
@@ -71,6 +77,7 @@ void main() {
     final capabilities = await platform.getCapabilities();
 
     expect(capabilities.usesAndroid17ContactPicker, isTrue);
+    expect(capabilities.supportedFields, contains(ContactField.phone));
     expect(capabilities.maximumSelectionLimit, 100);
   });
 }

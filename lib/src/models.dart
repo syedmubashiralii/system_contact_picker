@@ -6,7 +6,6 @@ import 'dart:typed_data';
 /// Fields requested by default when opening the contact picker.
 const defaultContactPickerFields = <ContactField>{
   ContactField.phone,
-  ContactField.email,
 };
 
 /// A contact property that the native picker should return.
@@ -51,6 +50,7 @@ class ContactPickerCapabilities {
     required this.usesAndroid17ContactPicker,
     required this.supportsMultiple,
     required this.requiresReadContactsPermission,
+    this.supportedFields = const <ContactField>{},
     this.maximumSelectionLimit,
   });
 
@@ -64,6 +64,7 @@ class ContactPickerCapabilities {
       supportsMultiple: map['supportsMultiple'] as bool? ?? false,
       requiresReadContactsPermission:
           map['requiresReadContactsPermission'] as bool? ?? false,
+      supportedFields: _contactFields(map['supportedFields']),
       maximumSelectionLimit: map['maximumSelectionLimit'] as int?,
     );
   }
@@ -82,6 +83,9 @@ class ContactPickerCapabilities {
 
   /// Whether selecting a contact requires `READ_CONTACTS`.
   final bool requiresReadContactsPermission;
+
+  /// Fields supported by the active platform picker.
+  final Set<ContactField> supportedFields;
 
   /// Maximum supported selection count, or `null` when unconstrained.
   final int? maximumSelectionLimit;
@@ -405,4 +409,14 @@ Uint8List? _bytes(Object? value) {
     return Uint8List.fromList(value.cast<int>());
   }
   return null;
+}
+
+Set<ContactField> _contactFields(Object? value) {
+  if (value is! List) {
+    return const <ContactField>{};
+  }
+  final names = value.whereType<String>().toSet();
+  return ContactField.values
+      .where((field) => names.contains(field.name))
+      .toSet();
 }
