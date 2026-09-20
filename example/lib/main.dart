@@ -68,8 +68,12 @@ class _ContactPickerExamplePageState extends State<ContactPickerExamplePage> {
     });
   }
 
-  Future<void> _pickPhoneOnly() async {
-    await _pickField(ContactField.phone);
+  Future<void> _pickPhoneWithName() async {
+    await _run(() {
+      return _picker.pickContacts(
+        fields: const <ContactField>{ContactField.name, ContactField.phone},
+      );
+    });
   }
 
   Future<void> _pickRichContact() async {
@@ -145,7 +149,7 @@ class _ContactPickerExamplePageState extends State<ContactPickerExamplePage> {
                       'Platform: ${capabilities.platform}'
                       '${capabilities.androidSdkInt == null ? '' : ' · API ${capabilities.androidSdkInt}'}\n'
                       'Contacts permission: not required\n'
-                      'Selection: ${capabilities.supportsMultiple ? 'single or multiple' : 'one contact and one field'}\n'
+                      'Selection: ${capabilities.supportsMultiple ? 'single or multiple' : 'one contact; name plus one value field'}\n'
                       'Supported fields: ${ContactField.values.where(capabilities.supportedFields.contains).map((field) => field.name).join(', ')}',
                     ),
                   ],
@@ -165,10 +169,13 @@ class _ContactPickerExamplePageState extends State<ContactPickerExamplePage> {
               FilledButton(
                 onPressed:
                     !_isBusy &&
-                        _supportsFields(<ContactField>[ContactField.phone])
-                    ? _pickPhoneOnly
+                        _supportsFields(<ContactField>[
+                          ContactField.name,
+                          ContactField.phone,
+                        ])
+                    ? _pickPhoneWithName
                     : null,
-                child: const Text('Pick phone'),
+                child: const Text('Pick phone + name'),
               ),
               OutlinedButton(
                 onPressed:

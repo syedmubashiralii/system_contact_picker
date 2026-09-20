@@ -38,7 +38,7 @@ void main() {
   testWidgets('Android 9 shows only permissionless legacy actions', (
     WidgetTester tester,
   ) async {
-    SystemContactPickerPlatform.instance = FakeContactPickerPlatform(
+    final platform = FakeContactPickerPlatform(
       const ContactPickerCapabilities(
         platform: 'android',
         androidSdkInt: 28,
@@ -54,6 +54,7 @@ void main() {
         maximumSelectionLimit: 1,
       ),
     );
+    SystemContactPickerPlatform.instance = platform;
 
     await tester.pumpWidget(const ContactPickerExampleApp());
     await tester.pumpAndSettle();
@@ -62,7 +63,13 @@ void main() {
       find.text('Android 9–16 permissionless legacy picker'),
       findsOneWidget,
     );
-    expect(find.text('Pick phone'), findsOneWidget);
+    expect(find.text('Pick phone + name'), findsOneWidget);
+    await tester.tap(find.text('Pick phone + name'));
+    await tester.pumpAndSettle();
+    expect(platform.lastFields, <ContactField>{
+      ContactField.name,
+      ContactField.phone,
+    });
     expect(find.text('Pick email'), findsOneWidget);
     expect(find.text('Pick address'), findsOneWidget);
     expect(find.text('Pick name'), findsOneWidget);

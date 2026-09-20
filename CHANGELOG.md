@@ -1,3 +1,12 @@
+## 0.0.4
+
+* Allow `name` with one legacy Android value field (`phone`, `email`, or
+  `postalAddress`) on API 36 and below, and return `displayName` without
+  requiring broad contacts permission.
+* Validate every native method-channel argument before building an Android
+  intent, convert launch/query failures into stable platform errors, and keep
+  pending picker calls alive across configuration changes.
+
 ## 0.0.3
 
 * Removed `READ_CONTACTS` and changed legacy Android selection to use only the

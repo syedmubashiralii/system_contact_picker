@@ -72,4 +72,43 @@ void main() {
       ),
     );
   });
+
+  testWidgets('Android rejects malformed native arguments without crashing', (
+    WidgetTester tester,
+  ) async {
+    const plugin = SystemContactPicker();
+    final capabilities = await plugin.getCapabilities();
+    if (capabilities.platform != 'android') {
+      return;
+    }
+
+    const channel = MethodChannel('system_contact_picker');
+    final malformedArguments = <Map<String, Object?>>[
+      <String, Object?>{'fields': 'phone'},
+      <String, Object?>{
+        'fields': <Object?>['phone', 7],
+      },
+      <String, Object?>{
+        'fields': <String>['unknown'],
+      },
+      <String, Object?>{'allowMultiple': 1},
+      <String, Object?>{'matchAllFields': 'true'},
+      <String, Object?>{'limit': 1.5},
+      <String, Object?>{'limit': 101},
+    ];
+
+    for (final arguments in malformedArguments) {
+      await expectLater(
+        channel.invokeListMethod<dynamic>('pickContacts', arguments),
+        throwsA(
+          isA<PlatformException>().having(
+            (error) => error.code,
+            'code',
+            'bad_arguments',
+          ),
+        ),
+        reason: 'arguments=$arguments',
+      );
+    }
+  });
 }

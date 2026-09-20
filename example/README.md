@@ -6,7 +6,7 @@ Demonstrates permissionless contact selection on every supported platform.
 
 | Android version | API | Example behavior |
 | --- | --- | --- |
-| Android 9–16 | 28–36 | Legacy system `ACTION_PICK`; one contact and one field per request |
+| Android 9–16 | 28–36 | Legacy system `ACTION_PICK`; one contact with `name` and one value field per request |
 | Android 17+ | 37+ | Privacy-preserving Contact Picker; multiple contacts and multiple fields |
 
 The example declares no contacts permission. Its minimum Android version is

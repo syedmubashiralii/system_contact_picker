@@ -64,7 +64,7 @@ class SystemContactPickerPlugin :
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
-        detachActivity()
+        detachActivity(cancelPendingCall = false)
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
@@ -72,7 +72,7 @@ class SystemContactPickerPlugin :
     }
 
     override fun onDetachedFromActivity() {
-        detachActivity()
+        detachActivity(cancelPendingCall = true)
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
@@ -103,21 +103,32 @@ class SystemContactPickerPlugin :
             return true
         }
 
-        executor.execute {
-            try {
-                val contacts = if (usesAndroid17Picker()) {
-                    queryAndroid17Session(resultUri)
-                } else {
-                    queryLegacySelection(resultUri, current.options.fields.single())
+        try {
+            executor.execute {
+                try {
+                    val contacts = if (usesAndroid17Picker()) {
+                        queryAndroid17Session(resultUri)
+                    } else {
+                        val field = checkNotNull(legacyPickerField(current.options.fields)) {
+                            LEGACY_FIELD_ERROR
+                        }
+                        queryLegacySelection(resultUri, field)
+                    }
+                    completeSuccess(current, contacts)
+                } catch (error: Throwable) {
+                    completeError(
+                        current,
+                        "query_failed",
+                        error.message ?: "Unable to read the selected contact data.",
+                    )
                 }
-                completeSuccess(current, contacts)
-            } catch (error: Throwable) {
-                completeError(
-                    current,
-                    "query_failed",
-                    error.message ?: "Unable to read the selected contact data.",
-                )
             }
+        } catch (error: RuntimeException) {
+            completeError(
+                current,
+                "query_failed",
+                error.message ?: "Unable to schedule the selected contact query.",
+            )
         }
         return true
     }
@@ -151,10 +162,10 @@ class SystemContactPickerPlugin :
             )
             return
         }
-        if (!usesAndroid17Picker() && !hasSupportedLegacyFields(options)) {
+        if (!usesAndroid17Picker() && legacyPickerField(options.fields) == null) {
             result.error(
                 "unsupported_legacy_fields",
-                "Android API 36 and below supports exactly one of: name, phone, email, or postalAddress.",
+                LEGACY_FIELD_ERROR,
                 null,
             )
             return
@@ -175,12 +186,12 @@ class SystemContactPickerPlugin :
             )
             return
         }
-        val intent = if (usesAndroid17Picker()) {
-            android17Intent(current.options)
-        } else {
-            legacyIntent(current.options)
-        }
         try {
+            val intent = if (usesAndroid17Picker()) {
+                android17Intent(current.options)
+            } else {
+                legacyIntent(current.options)
+            }
             hostActivity.startActivityForResult(intent, REQUEST_PICK_CONTACT)
         } catch (error: ActivityNotFoundException) {
             completeError(
@@ -209,7 +220,10 @@ class SystemContactPickerPlugin :
     }
 
     private fun legacyIntent(options: PickerOptions): Intent {
-        val dataUri = when (options.fields.single()) {
+        val field = checkNotNull(legacyPickerField(options.fields)) {
+            LEGACY_FIELD_ERROR
+        }
+        val dataUri = when (field) {
             "phone" -> Phone.CONTENT_URI
             "email" -> Email.CONTENT_URI
             "postalAddress" -> StructuredPostal.CONTENT_URI
@@ -285,32 +299,8 @@ class SystemContactPickerPlugin :
         }
     }
 
-    private fun requestedMimeTypes(fields: List<String>): List<String> {
-        val mimeTypes = LinkedHashSet<String>()
-        for (field in fields) {
-            when (field) {
-                "name" -> mimeTypes.add(StructuredName.CONTENT_ITEM_TYPE)
-                "phone" -> mimeTypes.add(Phone.CONTENT_ITEM_TYPE)
-                "email" -> mimeTypes.add(Email.CONTENT_ITEM_TYPE)
-                "postalAddress" -> mimeTypes.add(StructuredPostal.CONTENT_ITEM_TYPE)
-                "organization" -> mimeTypes.add(Organization.CONTENT_ITEM_TYPE)
-                "relation" -> mimeTypes.add(Relation.CONTENT_ITEM_TYPE)
-                "event" -> mimeTypes.add(Event.CONTENT_ITEM_TYPE)
-                "photo" -> mimeTypes.add(Photo.CONTENT_ITEM_TYPE)
-                "website" -> mimeTypes.add(Website.CONTENT_ITEM_TYPE)
-                "nickname" -> mimeTypes.add(Nickname.CONTENT_ITEM_TYPE)
-                else -> throw IllegalArgumentException("Unsupported contact field: $field")
-            }
-        }
-        return mimeTypes.toList()
-    }
-
-    private fun hasSupportedLegacyFields(options: PickerOptions): Boolean {
-        return options.fields.size == 1 && options.fields.single() in LEGACY_FIELDS
-    }
-
     private fun usesAndroid17Picker(): Boolean {
-        return Build.VERSION.SDK_INT >= ANDROID_17_API
+        return usesAndroid17Picker(Build.VERSION.SDK_INT)
     }
 
     private fun capabilities(): Map<String, Any?> {
@@ -346,16 +336,18 @@ class SystemContactPickerPlugin :
         }
     }
 
-    private fun detachActivity() {
+    private fun detachActivity(cancelPendingCall: Boolean) {
         activityBinding?.removeActivityResultListener(this)
         activityBinding = null
         activity = null
-        pendingCall?.let {
-            completeError(
-                it,
-                "activity_detached",
-                "Flutter activity detached before the contact picker completed.",
-            )
+        if (cancelPendingCall) {
+            pendingCall?.let {
+                completeError(
+                    it,
+                    "activity_detached",
+                    "Flutter activity detached before the contact picker completed.",
+                )
+            }
         }
     }
 
@@ -515,7 +507,7 @@ class SystemContactPickerPlugin :
             ?: throw IllegalStateException("Missing Android resources.")
     }
 
-    private data class PickerOptions(
+    internal data class PickerOptions(
         val fields: List<String>,
         val allowMultiple: Boolean,
         val limit: Int?,
@@ -523,19 +515,76 @@ class SystemContactPickerPlugin :
     ) {
         companion object {
             fun from(call: MethodCall): PickerOptions {
-                val fields = (call.argument<List<String>>("fields") ?: DEFAULT_FIELDS)
-                    .distinct()
+                return fromArguments(call.arguments)
+            }
+
+            internal fun fromArguments(arguments: Any?): PickerOptions {
+                val argumentMap = when (arguments) {
+                    null -> emptyMap<Any?, Any?>()
+                    is Map<*, *> -> arguments
+                    else -> throw IllegalArgumentException(
+                        "pickContacts arguments must be a map.",
+                    )
+                }
+                val fields = parseFields(argumentMap["fields"])
                 require(fields.isNotEmpty()) { "At least one contact field is required." }
-                val limit = (call.argument<Any>("limit") as? Number)?.toInt()
+                fields.firstOrNull { it !in ALL_FIELDS }?.let { field ->
+                    throw IllegalArgumentException("Unsupported contact field: $field")
+                }
+
+                val limit = parseLimit(argumentMap["limit"])
                 require(limit == null || limit in 1..MAX_SELECTION_LIMIT) {
                     "limit must be between 1 and $MAX_SELECTION_LIMIT."
                 }
                 return PickerOptions(
                     fields = fields,
-                    allowMultiple = call.argument<Boolean>("allowMultiple") ?: false,
+                    allowMultiple = parseBoolean(
+                        argumentMap["allowMultiple"],
+                        "allowMultiple",
+                    ),
                     limit = limit,
-                    matchAllFields = call.argument<Boolean>("matchAllFields") ?: false,
+                    matchAllFields = parseBoolean(
+                        argumentMap["matchAllFields"],
+                        "matchAllFields",
+                    ),
                 )
+            }
+
+            private fun parseFields(value: Any?): List<String> {
+                if (value == null) {
+                    return DEFAULT_FIELDS
+                }
+                require(value is List<*>) {
+                    "fields must be a list of contact field names."
+                }
+                return value.map { field ->
+                    require(field is String) {
+                        "fields must contain only contact field names."
+                    }
+                    field
+                }.distinct()
+            }
+
+            private fun parseLimit(value: Any?): Int? {
+                return when (value) {
+                    null -> null
+                    is Int -> value
+                    is Long -> {
+                        require(value in Int.MIN_VALUE..Int.MAX_VALUE) {
+                            "limit is outside the supported integer range."
+                        }
+                        value.toInt()
+                    }
+                    else -> throw IllegalArgumentException("limit must be an integer.")
+                }
+            }
+
+            private fun parseBoolean(value: Any?, name: String): Boolean {
+                if (value == null) {
+                    return false
+                }
+                require(value is Boolean) { "$name must be a boolean." }
+                return value
             }
         }
     }
@@ -601,6 +650,9 @@ class SystemContactPickerPlugin :
         private const val ANDROID_17_API = 37
         private const val REQUEST_PICK_CONTACT = 3717
         private const val MAX_SELECTION_LIMIT = 100
+        private const val LEGACY_FIELD_ERROR =
+            "Android API 36 and below supports name alone, or exactly one of phone, email, " +
+                "or postalAddress with optional name."
         private const val ACTION_PICK_CONTACTS = "android.provider.action.PICK_CONTACTS"
         private const val EXTRA_USE_SYSTEM_CONTACTS_PICKER =
             "android.intent.extra.USE_SYSTEM_CONTACTS_PICKER"
@@ -623,7 +675,45 @@ class SystemContactPickerPlugin :
             "website",
             "nickname",
         )
-        private val LEGACY_FIELDS = linkedSetOf("name", "phone", "email", "postalAddress")
+        private val LEGACY_VALUE_FIELDS = linkedSetOf("phone", "email", "postalAddress")
+        private val LEGACY_FIELDS = linkedSetOf("name", *LEGACY_VALUE_FIELDS.toTypedArray())
+
+        internal fun requestedMimeTypes(fields: List<String>): List<String> {
+            val mimeTypes = LinkedHashSet<String>()
+            for (field in fields) {
+                when (field) {
+                    "name" -> mimeTypes.add(StructuredName.CONTENT_ITEM_TYPE)
+                    "phone" -> mimeTypes.add(Phone.CONTENT_ITEM_TYPE)
+                    "email" -> mimeTypes.add(Email.CONTENT_ITEM_TYPE)
+                    "postalAddress" -> mimeTypes.add(StructuredPostal.CONTENT_ITEM_TYPE)
+                    "organization" -> mimeTypes.add(Organization.CONTENT_ITEM_TYPE)
+                    "relation" -> mimeTypes.add(Relation.CONTENT_ITEM_TYPE)
+                    "event" -> mimeTypes.add(Event.CONTENT_ITEM_TYPE)
+                    "photo" -> mimeTypes.add(Photo.CONTENT_ITEM_TYPE)
+                    "website" -> mimeTypes.add(Website.CONTENT_ITEM_TYPE)
+                    "nickname" -> mimeTypes.add(Nickname.CONTENT_ITEM_TYPE)
+                    else -> throw IllegalArgumentException("Unsupported contact field: $field")
+                }
+            }
+            return mimeTypes.toList()
+        }
+
+        internal fun usesAndroid17Picker(sdkInt: Int): Boolean {
+            return sdkInt >= ANDROID_17_API
+        }
+
+        internal fun legacyPickerField(fields: List<String>): String? {
+            val distinctFields = fields.toSet()
+            if (distinctFields == setOf("name")) {
+                return "name"
+            }
+
+            val valueFields = distinctFields - "name"
+            return valueFields.singleOrNull()?.takeIf { field ->
+                field in LEGACY_VALUE_FIELDS
+            }
+        }
+
         private val LEGACY_CONTACT_PROJECTION = arrayOf(
             ContactsContract.Contacts._ID,
             ContactsContract.Contacts.LOOKUP_KEY,

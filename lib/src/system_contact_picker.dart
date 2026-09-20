@@ -14,6 +14,11 @@ class SystemContactPicker {
   /// [fields] must not be empty. [limit], when provided, must be from 1 to
   /// 100. Platforms that only support one selection return at most one contact
   /// even when [allowMultiple] is `true`.
+  ///
+  /// On Android API 36 and below, [ContactField.name] may be requested alone or
+  /// with exactly one of phone, email, or postal address. The returned
+  /// [PickedContact.displayName] is populated for all supported legacy
+  /// selections.
   Future<List<PickedContact>> pickContacts({
     Set<ContactField> fields = defaultContactPickerFields,
     bool allowMultiple = false,
